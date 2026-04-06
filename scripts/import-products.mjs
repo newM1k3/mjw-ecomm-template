@@ -19,11 +19,13 @@
  * same brand_model + category before creating, so duplicates are skipped.
  */
 
-import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import * as XLSX from 'xlsx';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { createRequire } from 'module';
 import PocketBase from 'pocketbase';
+
+const require = createRequire(import.meta.url);
+const XLSX = require('xlsx');
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
