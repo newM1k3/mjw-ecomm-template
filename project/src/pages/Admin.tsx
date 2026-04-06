@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Package, Settings, Star, CheckCircle, RotateCcw, Loader2, Eye, EyeOff, Save } from 'lucide-react';
+import { LogOut, Package, Settings, Star, CheckCircle, RotateCcw, Loader2, Eye, EyeOff, Save, ImageOff, Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import pb from '../lib/pocketbase';
 import { useAuth } from '../hooks/useAuth';
@@ -11,7 +11,7 @@ import { Product } from '../lib/types';
 import { STORE_CONFIG } from '../lib/config';
 
 type AdminTab = 'products' | 'settings';
-type ProductFilter = 'all' | 'available' | 'sold';
+type ProductFilter = 'all' | 'available' | 'sold' | 'no_photo';
 
 function AdminLogin() {
   const { login, isLoading, error } = useAuth();
@@ -80,12 +80,35 @@ function AdminLogin() {
 }
 
 function AdminPanel() {
+  // PHOTO UPLOAD WORKFLOW FOR SCOTT
+  // ================================
+  // INITIAL BULK UPLOAD (one-time):
+  // 1. Go to /admin and sign in
+  // 2. Click the "No Photo" tab — this shows only products without images
+  // 3. Open your Google Drive photos folder on the same device
+  // 4. For each product in the list, find the matching photo in Google Drive,
+  //    download it to your device, then click the product thumbnail to open
+  //    the upload modal
+  // 5. Choose the photo, preview it, confirm it's correct, then click "Upload"
+  // 6. The product disappears from the "No Photo" list when done
+  // 7. Repeat until "No Photo" count reaches 0
+  //
+  // ONGOING (new inventory):
+  // 1. Add the new product via PocketBase dashboard or wait for the import script
+  // 2. Go to /admin → "No Photo" tab → upload the photo for the new item
+  //
+  // ONGOING (sold item):
+  // 1. Go to /admin → "Available" tab
+  // 2. Find the item and click "Mark as Sold"
+  // ================================
+
   const { logout } = useAuth();
   const { markSold, markAvailable, toggleFeatured, updateProductImage, getSetting, setSetting } = useAdmin();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('products');
-  const [productFilter, setProductFilter] = useState<ProductFilter>('available');
+  const [productFilter, setProductFilter] = useState<ProductFilter>('no_photo');
+  const [adminSearch, setAdminSearch] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const [stripeKey, setStripeKey] = useState('');
@@ -98,7 +121,7 @@ function AdminPanel() {
     queryKey: ['admin-products'],
     queryFn: async () => {
       return await pb.collection('products').getFullList<Product>({
-        sort: 'category,brand_model',
+        sort: 'brand_model',
       });
     },
   });
@@ -153,14 +176,27 @@ function AdminPanel() {
   const filteredProducts = (allProducts ?? []).filter(p => {
     if (productFilter === 'available') return p.is_available && !p.is_sold;
     if (productFilter === 'sold') return p.is_sold;
+    if (productFilter === 'no_photo') return !p.image || p.image === '';
     return true;
   });
+
+  const displayedProducts = filteredProducts.filter(p =>
+    adminSearch === '' || p.brand_model.toLowerCase().includes(adminSearch.toLowerCase())
+  );
 
   const counts = {
     all: allProducts?.length ?? 0,
     available: allProducts?.filter(p => p.is_available && !p.is_sold).length ?? 0,
     sold: allProducts?.filter(p => p.is_sold).length ?? 0,
+    no_photo: allProducts?.filter(p => !p.image || p.image === '').length ?? 0,
   };
+
+  const FILTER_TABS: { id: ProductFilter; label: string; Icon: React.ElementType }[] = [
+    { id: 'no_photo', label: 'No Photo', Icon: ImageOff },
+    { id: 'available', label: 'Available', Icon: Package },
+    { id: 'sold', label: 'Sold', Icon: CheckCircle },
+    { id: 'all', label: 'All', Icon: Package },
+  ];
 
   const TABS: { id: AdminTab; label: string; Icon: React.ElementType }[] = [
     { id: 'products', label: 'Products', Icon: Package },
@@ -207,22 +243,59 @@ function AdminPanel() {
 
         {activeTab === 'products' && (
           <div>
-            <div className="flex gap-2 mb-6 flex-wrap">
-              {(['available', 'sold', 'all'] as ProductFilter[]).map(f => (
+            {/* Search input */}
+            <div className="relative mb-4">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[--color-muted]" />
+              <input
+                type="text"
+                placeholder="Search products…"
+                value={adminSearch}
+                onChange={e => setAdminSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-[--color-border] rounded-xl text-sm text-[--color-text] bg-white focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent"
+              />
+              {adminSearch && (
                 <button
-                  key={f}
-                  onClick={() => setProductFilter(f)}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                    productFilter === f
-                      ? 'bg-[--color-primary] text-white'
+                  onClick={() => setAdminSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[--color-muted] hover:text-[--color-text] text-xs font-medium"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Filter tabs */}
+            <div className="flex gap-2 mb-4 flex-wrap">
+              {FILTER_TABS.map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setProductFilter(id)}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                    productFilter === id
+                      ? id === 'no_photo'
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-[--color-primary] text-white'
                       : 'bg-white border border-[--color-border] text-[--color-muted] hover:text-[--color-text]'
                   }`}
                 >
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
-                  <span className="ml-2 text-xs opacity-70">({counts[f]})</span>
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                  <span className="text-xs opacity-70">({counts[id]})</span>
                 </button>
               ))}
             </div>
+
+            {/* Result count */}
+            {!productsLoading && (
+              <p className="text-xs text-[--color-muted] mb-4">
+                Showing {displayedProducts.length} of {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''}
+                {productFilter === 'no_photo' && counts.no_photo > 0 && (
+                  <span className="ml-2 text-orange-600 font-medium">{counts.no_photo} still need photos</span>
+                )}
+                {productFilter === 'no_photo' && counts.no_photo === 0 && (
+                  <span className="ml-2 text-green-600 font-medium">All products have photos!</span>
+                )}
+              </p>
+            )}
 
             {productsLoading ? (
               <div className="flex items-center justify-center py-20">
@@ -230,7 +303,7 @@ function AdminPanel() {
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredProducts.map(product => (
+                {displayedProducts.map(product => (
                   <div
                     key={product.id}
                     className={`bg-white rounded-2xl border p-4 flex items-center gap-4 flex-wrap sm:flex-nowrap ${
@@ -239,6 +312,9 @@ function AdminPanel() {
                   >
                     <AdminImageUpload
                       productId={product.id}
+                      productName={product.brand_model}
+                      productCategory={product.category}
+                      conditionRating={product.condition_rating}
                       currentImageUrl={product.image ? pb.files.getURL(product, product.image, { thumb: '100x100' }) : ''}
                       onUpload={(file) => handleImageUpload(product.id, file)}
                     />
@@ -311,10 +387,19 @@ function AdminPanel() {
                   </div>
                 ))}
 
-                {filteredProducts.length === 0 && (
+                {displayedProducts.length === 0 && (
                   <div className="text-center py-16 text-[--color-muted]">
-                    <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm">No products in this view.</p>
+                    {productFilter === 'no_photo' ? (
+                      <>
+                        <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-400 opacity-70" />
+                        <p className="text-sm font-medium text-green-700">All products have photos!</p>
+                      </>
+                    ) : (
+                      <>
+                        <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                        <p className="text-sm">No products in this view.</p>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
