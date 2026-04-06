@@ -45,7 +45,7 @@ const COLLECTIONS = [
       { name: 'quick_sale_price', type: 'number', required: true  },
       { name: 'collector_price',  type: 'number', required: true  },
       { name: 'special_notes',    type: 'text',   required: false },
-      { name: 'image',            type: 'file',   required: false, options: { maxSelect: 1, maxSize: 5242880, mimeTypes: ['image/jpeg','image/png','image/webp'] } },
+      { name: 'image',            type: 'file',   required: false, options: { maxSelect: 4, maxSize: 5242880, mimeTypes: ['image/jpeg','image/png','image/webp'] } },
       { name: 'is_sold',          type: 'bool',   required: false },
       { name: 'is_available',     type: 'bool',   required: false },
       { name: 'is_featured',      type: 'bool',   required: false },
