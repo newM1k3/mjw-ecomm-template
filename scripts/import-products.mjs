@@ -149,8 +149,8 @@ async function main() {
       errors++;
     }
 
-    // Small delay to avoid hammering the API
-    await new Promise(r => setTimeout(r, 80));
+    // Delay between requests to respect pockethost.io rate limits
+    await new Promise(r => setTimeout(r, 300));
   }
 
   // ── 4. Summary ──
