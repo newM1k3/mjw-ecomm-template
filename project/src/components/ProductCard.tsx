@@ -66,13 +66,8 @@ export default function ProductCard({ product, onClick }: ProductCardProps) {
         <p className="text-xs text-[--color-muted] mb-3 line-clamp-1">{product.category}</p>
         <div className="flex items-center justify-between">
           <span className="text-[--color-primary] font-bold text-base">
-            ${product.quick_sale_price.toFixed(2)} <span className="text-xs font-normal text-[--color-muted]">CAD</span>
+            ${product.collector_price.toFixed(2)} <span className="text-xs font-normal text-[--color-muted]">CAD</span>
           </span>
-          {product.collector_price > product.quick_sale_price && (
-            <span className="text-xs text-[--color-muted] line-through">
-              ${product.collector_price.toFixed(2)}
-            </span>
-          )}
         </div>
       </div>
     </div>

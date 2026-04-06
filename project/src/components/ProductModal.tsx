@@ -24,7 +24,6 @@ function getImageUrl(product: Product): string {
 
 export default function ProductModal({ product, onClose, onAddToCart }: ProductModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>('details');
-  const [priceType, setPriceType] = useState<'quick' | 'collector'>('quick');
   const [addedToCart, setAddedToCart] = useState(false);
 
   const [enquireForm, setEnquireForm] = useState({ name: '', email: '', message: '' });
@@ -32,13 +31,13 @@ export default function ProductModal({ product, onClose, onAddToCart }: ProductM
   const [enquireError, setEnquireError] = useState('');
 
   const imageUrl = getImageUrl(product);
-  const selectedPrice = priceType === 'quick' ? product.quick_sale_price : product.collector_price;
+  const selectedPrice = product.collector_price;
 
   function handleAddToCart() {
     onAddToCart({
       productId: product.id,
       brandModel: product.brand_model,
-      priceType,
+      priceType: 'collector',
       price: selectedPrice,
       imageUrl,
     });
@@ -134,28 +133,8 @@ export default function ProductModal({ product, onClose, onAddToCart }: ProductM
                   </div>
                 )}
 
-                <div className="space-y-3 pt-2">
-                  <p className="text-xs text-[--color-muted] font-medium uppercase tracking-wider">Choose Price Type</p>
-                  <label className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-colors ${priceType === 'quick' ? 'border-[--color-primary] bg-[--color-primary] bg-opacity-5' : 'border-[--color-border] hover:border-[--color-primary]'}`}>
-                    <div className="flex items-center gap-3">
-                      <input type="radio" name="priceType" value="quick" checked={priceType === 'quick'} onChange={() => setPriceType('quick')} className="accent-[--color-primary]" />
-                      <div>
-                        <p className="font-semibold text-[--color-text] text-sm">Quick-Sale</p>
-                        <p className="text-xs text-[--color-muted]">Best deal, ships fast</p>
-                      </div>
-                    </div>
-                    <span className="font-bold text-[--color-primary]">${product.quick_sale_price.toFixed(2)}</span>
-                  </label>
-                  <label className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-colors ${priceType === 'collector' ? 'border-[--color-primary] bg-[--color-primary] bg-opacity-5' : 'border-[--color-border] hover:border-[--color-primary]'}`}>
-                    <div className="flex items-center gap-3">
-                      <input type="radio" name="priceType" value="collector" checked={priceType === 'collector'} onChange={() => setPriceType('collector')} className="accent-[--color-primary]" />
-                      <div>
-                        <p className="font-semibold text-[--color-text] text-sm">Collector</p>
-                        <p className="text-xs text-[--color-muted]">Full market value</p>
-                      </div>
-                    </div>
-                    <span className="font-bold text-[--color-primary]">${product.collector_price.toFixed(2)}</span>
-                  </label>
+                <div className="pt-2">
+                  <span className="text-2xl font-bold text-[--color-primary]">${product.collector_price.toFixed(2)} <span className="text-sm font-normal text-[--color-muted]">{STORE_CONFIG.currency}</span></span>
                 </div>
 
                 <button
