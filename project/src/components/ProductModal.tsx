@@ -15,8 +15,10 @@ type Tab = 'details' | 'enquire';
 
 function getImageUrl(product: Product): string {
   if (!product.image) return '';
+  const filename = Array.isArray(product.image) ? product.image[0] : product.image;
+  if (!filename) return '';
   try {
-    return pb.files.getURL(product, product.image);
+    return pb.files.getURL(product, filename);
   } catch {
     return '';
   }

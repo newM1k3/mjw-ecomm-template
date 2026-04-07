@@ -9,7 +9,7 @@ export interface Product {
   quick_sale_price: number;
   collector_price: number;
   special_notes: string;
-  image: string;
+  image: string | string[];
   is_sold: boolean;
   is_available: boolean;
   is_featured: boolean;
