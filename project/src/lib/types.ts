@@ -25,7 +25,7 @@ export interface CartItem {
   imageUrl: string;
 }
 
-export type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'condition_best';
+export type SortOption = 'alpha' | 'price_asc' | 'price_desc' | 'condition_best';
 
 export interface ProductFilters {
   category?: string;

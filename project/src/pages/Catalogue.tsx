@@ -11,7 +11,7 @@ interface CatalogueProps {
 }
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'newest', label: 'Newest First' },
+  { value: 'alpha', label: 'A → Z' },
   { value: 'price_asc', label: 'Price: Low to High' },
   { value: 'price_desc', label: 'Price: High to Low' },
   { value: 'condition_best', label: 'Best Condition' },
@@ -32,7 +32,7 @@ export default function Catalogue({ onAddToCart }: CatalogueProps) {
   const [filters, setFilters] = useState<ProductFilters>({
     category: searchParams.get('category') || '',
     search: '',
-    sortBy: 'newest',
+    sortBy: 'alpha',
     priceMin: undefined,
     priceMax: undefined,
     page: 1,
@@ -79,7 +79,7 @@ export default function Catalogue({ onAddToCart }: CatalogueProps) {
   }
 
   function clearFilters() {
-    setFilters({ category: '', search: '', sortBy: 'newest', priceMin: undefined, priceMax: undefined, page: 1 });
+    setFilters({ category: '', search: '', sortBy: 'alpha', priceMin: undefined, priceMax: undefined, page: 1 });
     setCustomMin('');
     setCustomMax('');
     setActivePreset(null);

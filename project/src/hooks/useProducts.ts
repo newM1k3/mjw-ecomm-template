@@ -31,8 +31,8 @@ function buildSort(sortBy?: string): string {
     case 'price_asc': return 'quick_sale_price';
     case 'price_desc': return '-quick_sale_price';
     case 'condition_best': return '-condition_rating';
-    case 'newest':
-    default: return '-created';
+    case 'alpha':
+    default: return 'brand_model';
   }
 }
 
@@ -68,7 +68,7 @@ export function useFeaturedProducts() {
     queryFn: async () => {
       const result = await pb.collection('products').getList<Product>(1, 8, {
         filter: 'is_featured = true && is_available = true',
-        sort: '-created',
+        sort: 'brand_model',
       });
       return result.items;
     },
