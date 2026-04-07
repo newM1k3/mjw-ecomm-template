@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, ShoppingCart, Send, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { X, ShoppingCart, Send, CheckCircle, AlertCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import pb from '../lib/pocketbase';
 import { Product, CartItem } from '../lib/types';
 import { STORE_CONFIG } from '../lib/config';
@@ -13,27 +13,46 @@ interface ProductModalProps {
 
 type Tab = 'details' | 'enquire';
 
-function getImageUrl(product: Product): string {
-  if (!product.image) return '';
-  const filename = Array.isArray(product.image) ? product.image[0] : product.image;
-  if (!filename) return '';
-  try {
-    return pb.files.getURL(product, filename);
-  } catch {
-    return '';
-  }
+/** Resolve all image URLs for a product. Returns an empty array if none. */
+function getImageUrls(product: Product): string[] {
+  const filenames = Array.isArray(product.image)
+    ? product.image
+    : product.image
+    ? [product.image]
+    : [];
+  return filenames
+    .filter(Boolean)
+    .map(fn => {
+      try {
+        return pb.files.getURL(product, fn);
+      } catch {
+        return '';
+      }
+    })
+    .filter(Boolean);
 }
 
 export default function ProductModal({ product, onClose, onAddToCart }: ProductModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>('details');
   const [addedToCart, setAddedToCart] = useState(false);
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
 
   const [enquireForm, setEnquireForm] = useState({ name: '', email: '', message: '' });
   const [enquireStatus, setEnquireStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [enquireError, setEnquireError] = useState('');
 
-  const imageUrl = getImageUrl(product);
+  const imageUrls = getImageUrls(product);
+  const hasMultiple = imageUrls.length > 1;
+  const currentImageUrl = imageUrls[activeImageIdx] ?? '';
   const selectedPrice = product.collector_price;
+
+  function prevImage() {
+    setActiveImageIdx(i => (i - 1 + imageUrls.length) % imageUrls.length);
+  }
+
+  function nextImage() {
+    setActiveImageIdx(i => (i + 1) % imageUrls.length);
+  }
 
   function handleAddToCart() {
     onAddToCart({
@@ -41,7 +60,8 @@ export default function ProductModal({ product, onClose, onAddToCart }: ProductM
       brandModel: product.brand_model,
       priceType: 'collector',
       price: selectedPrice,
-      imageUrl,
+      // Always use the first image as the cart thumbnail.
+      imageUrl: imageUrls[0] ?? '',
     });
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2000);
@@ -76,6 +96,7 @@ export default function ProductModal({ product, onClose, onAddToCart }: ProductM
       <div className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-[--color-border]">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold text-[--color-text] leading-tight">{product.brand_model}</h2>
@@ -86,6 +107,7 @@ export default function ProductModal({ product, onClose, onAddToCart }: ProductM
           </button>
         </div>
 
+        {/* Tabs */}
         <div className="flex border-b border-[--color-border]">
           {(['details', 'enquire'] as Tab[]).map(tab => (
             <button
@@ -101,20 +123,78 @@ export default function ProductModal({ product, onClose, onAddToCart }: ProductM
         <div className="flex-1 overflow-y-auto">
           {activeTab === 'details' && (
             <div className="grid sm:grid-cols-2 gap-0">
-              <div className="bg-[--color-bg] aspect-square sm:aspect-auto sm:min-h-[320px] overflow-hidden">
-                {imageUrl ? (
-                  <img src={imageUrl} alt={product.brand_model} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-[--color-muted] min-h-[240px]">
-                    <svg className="w-16 h-16 mb-3 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    <span className="text-sm opacity-40">No photo available</span>
+
+              {/* ── Image gallery column ── */}
+              <div className="bg-[--color-bg] flex flex-col">
+                {/* Main large image */}
+                <div className="relative aspect-square sm:aspect-auto sm:flex-1 sm:min-h-[280px] overflow-hidden">
+                  {currentImageUrl ? (
+                    <img
+                      src={currentImageUrl}
+                      alt={`${product.brand_model} — photo ${activeImageIdx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-[--color-muted] min-h-[240px]">
+                      <svg className="w-16 h-16 mb-3 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="text-sm opacity-40">No photo available</span>
+                    </div>
+                  )}
+
+                  {/* Prev / Next arrows — only when multiple images */}
+                  {hasMultiple && (
+                    <>
+                      <button
+                        onClick={prevImage}
+                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1.5 transition-colors"
+                        aria-label="Previous photo"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={nextImage}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1.5 transition-colors"
+                        aria-label="Next photo"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+
+                      {/* Dot indicator */}
+                      <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
+                        {imageUrls.map((_, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setActiveImageIdx(idx)}
+                            className={`w-1.5 h-1.5 rounded-full transition-colors ${idx === activeImageIdx ? 'bg-white' : 'bg-white/50 hover:bg-white/75'}`}
+                            aria-label={`Photo ${idx + 1}`}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Thumbnail strip — only when multiple images */}
+                {hasMultiple && (
+                  <div className="flex gap-1.5 p-2 bg-[--color-bg] border-t border-[--color-border]/50 overflow-x-auto">
+                    {imageUrls.map((url, idx) => (
+                      <button
+                        key={url}
+                        onClick={() => setActiveImageIdx(idx)}
+                        className={`shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-colors ${idx === activeImageIdx ? 'border-[--color-primary]' : 'border-transparent hover:border-[--color-primary]/40'}`}
+                        aria-label={`View photo ${idx + 1}`}
+                      >
+                        <img src={url} alt="" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
 
+              {/* ── Product details column ── */}
               <div className="p-6 flex flex-col gap-5">
                 <div>
                   <p className="text-xs text-[--color-muted] font-medium uppercase tracking-wider mb-1">Category</p>
@@ -136,7 +216,10 @@ export default function ProductModal({ product, onClose, onAddToCart }: ProductM
                 )}
 
                 <div className="pt-2">
-                  <span className="text-2xl font-bold text-[--color-primary]">${product.collector_price.toFixed(2)} <span className="text-sm font-normal text-[--color-muted]">{STORE_CONFIG.currency}</span></span>
+                  <span className="text-2xl font-bold text-[--color-primary]">
+                    ${product.collector_price.toFixed(2)}{' '}
+                    <span className="text-sm font-normal text-[--color-muted]">{STORE_CONFIG.currency}</span>
+                  </span>
                 </div>
 
                 <button

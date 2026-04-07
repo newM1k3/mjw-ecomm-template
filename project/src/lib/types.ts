@@ -9,7 +9,8 @@ export interface Product {
   quick_sale_price: number;
   collector_price: number;
   special_notes: string;
-  image: string | string[];
+  /** PocketBase returns filenames as string[] for multi-file fields. */
+  image: string[];
   is_sold: boolean;
   is_available: boolean;
   is_featured: boolean;

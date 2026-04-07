@@ -32,10 +32,38 @@ export function useAdmin() {
     invalidateProducts();
   }, [invalidateProducts]);
 
+  /**
+   * Legacy single-image helper — kept for backwards compatibility.
+   * Appends a single file to the `image` array (does not replace existing images).
+   */
   const updateProductImage = useCallback(async (productId: string, imageFile: File) => {
     const formData = new FormData();
     formData.append('image', imageFile);
     await pb.collection('products').update(productId, formData);
+    invalidateProducts();
+  }, [invalidateProducts]);
+
+  /**
+   * Append one or more new images to a product's `image` array.
+   * PocketBase appends files when the field name is used without the `-` prefix.
+   */
+  const addProductImages = useCallback(async (productId: string, files: File[]) => {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('image', file);
+    }
+    await pb.collection('products').update(productId, formData);
+    invalidateProducts();
+  }, [invalidateProducts]);
+
+  /**
+   * Remove a single image from a product by its filename.
+   * PocketBase removes a file when you send `image-` with the filename as value.
+   */
+  const removeProductImage = useCallback(async (productId: string, filename: string) => {
+    await pb.collection('products').update(productId, {
+      [`image-`]: filename,
+    });
     invalidateProducts();
   }, [invalidateProducts]);
 
@@ -57,5 +85,14 @@ export function useAdmin() {
     }
   }, []);
 
-  return { markSold, markAvailable, toggleFeatured, updateProductImage, getSetting, setSetting };
+  return {
+    markSold,
+    markAvailable,
+    toggleFeatured,
+    updateProductImage,
+    addProductImages,
+    removeProductImage,
+    getSetting,
+    setSetting,
+  };
 }

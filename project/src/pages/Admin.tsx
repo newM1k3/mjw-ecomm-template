@@ -103,7 +103,7 @@ function AdminPanel() {
   // ================================
 
   const { logout } = useAuth();
-  const { markSold, markAvailable, toggleFeatured, updateProductImage, getSetting, setSetting } = useAdmin();
+  const { markSold, markAvailable, toggleFeatured, addProductImages, removeProductImage, getSetting, setSetting } = useAdmin();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('products');
@@ -157,8 +157,13 @@ function AdminPanel() {
     try { await toggleFeatured(productId, !current); await refetch(); } finally { setActionLoading(null); }
   }
 
-  async function handleImageUpload(productId: string, file: File) {
-    await updateProductImage(productId, file);
+  async function handleAddImages(productId: string, files: File[]) {
+    await addProductImages(productId, files);
+    await refetch();
+  }
+
+  async function handleRemoveImage(productId: string, filename: string) {
+    await removeProductImage(productId, filename);
     await refetch();
   }
 
@@ -191,7 +196,7 @@ function AdminPanel() {
   const filteredProducts = (allProducts ?? []).filter(p => {
     if (productFilter === 'available') return p.is_available && !p.is_sold;
     if (productFilter === 'sold') return p.is_sold;
-    if (productFilter === 'no_photo') return !p.image || (Array.isArray(p.image) ? p.image.length === 0 : p.image === '');
+    if (productFilter === 'no_photo') return !p.image || p.image.length === 0;
     return true;
   });
 
@@ -203,7 +208,7 @@ function AdminPanel() {
     all: allProducts?.length ?? 0,
     available: allProducts?.filter(p => p.is_available && !p.is_sold).length ?? 0,
     sold: allProducts?.filter(p => p.is_sold).length ?? 0,
-    no_photo: allProducts?.filter(p => !p.image || (Array.isArray(p.image) ? p.image.length === 0 : p.image === '')).length ?? 0,
+    no_photo: allProducts?.filter(p => !p.image || p.image.length === 0).length ?? 0,
   };
 
   const FILTER_TABS: { id: ProductFilter; label: string; Icon: React.ElementType }[] = [
@@ -326,12 +331,9 @@ function AdminPanel() {
                     }`}
                   >
                     <AdminImageUpload
-                      productId={product.id}
-                      productName={product.brand_model}
-                      productCategory={product.category}
-                      conditionRating={product.condition_rating}
-                      currentImageUrl={product.image && (Array.isArray(product.image) ? product.image.length > 0 : product.image !== '') ? pb.files.getURL(product, Array.isArray(product.image) ? product.image[0] : product.image, { thumb: '100x100' }) : ''}
-                      onUpload={(file) => handleImageUpload(product.id, file)}
+                      product={product}
+                      onAddImages={(files) => handleAddImages(product.id, files)}
+                      onRemoveImage={(filename) => handleRemoveImage(product.id, filename)}
                     />
 
                     <div className="flex-1 min-w-0">
