@@ -1,16 +1,30 @@
 import { Handler } from '@netlify/functions';
-import Stripe from 'stripe';
+import { SquareClient, SquareEnvironment } from 'square';
 import PocketBase from 'pocketbase';
+import { randomUUID } from 'crypto';
 
-const pb = new PocketBase(process.env.VITE_POCKETBASE_URL);
-
-async function getStripeKey(): Promise<string> {
+async function getSquareSettings(): Promise<{
+  accessToken: string;
+  locationId: string;
+  environment: 'sandbox' | 'production';
+}> {
+  const pb = new PocketBase(process.env.VITE_POCKETBASE_URL);
   await pb.collection('_superusers').authWithPassword(
     process.env.PB_ADMIN_EMAIL!,
     process.env.PB_ADMIN_PASSWORD!
   );
-  const record = await pb.collection('settings').getFirstListItem('key = "stripe_secret_key"');
-  return record.value;
+
+  const [tokenRecord, locationRecord, envRecord] = await Promise.all([
+    pb.collection('settings').getFirstListItem('key = "square_access_token"'),
+    pb.collection('settings').getFirstListItem('key = "square_location_id"'),
+    pb.collection('settings').getFirstListItem('key = "square_environment"').catch(() => null),
+  ]);
+
+  return {
+    accessToken: tokenRecord.value,
+    locationId: locationRecord.value,
+    environment: (envRecord?.value === 'production') ? 'production' : 'sandbox',
+  };
 }
 
 export const handler: Handler = async (event) => {
@@ -24,36 +38,57 @@ export const handler: Handler = async (event) => {
       return { statusCode: 400, body: JSON.stringify({ error: 'Cart is empty' }) };
     }
 
-    const secretKey = await getStripeKey();
-    const stripe = new Stripe(secretKey);
+    const { accessToken, locationId, environment } = await getSquareSettings();
 
-    const lineItems = items.map((item: { brandModel: string; price: number; priceType: string; imageUrl?: string }) => ({
-      price_data: {
-        currency: 'cad',
-        product_data: {
-          name: item.brandModel,
-          description: item.priceType === 'collector' ? 'Collector Price' : 'Quick-Sale Price',
-          images: item.imageUrl ? [item.imageUrl] : [],
-        },
-        unit_amount: Math.round(item.price * 100),
+    const client = new SquareClient({
+      token: accessToken,
+      environment: environment === 'production'
+        ? SquareEnvironment.Production
+        : SquareEnvironment.Sandbox,
+    });
+
+    // Map cart items to Square OrderLineItem objects.
+    // The PocketBase product ID is stored in `note` so verify-checkout
+    // can retrieve it later to mark products as sold.
+    const lineItems = items.map((item: {
+      productId: string;
+      brandModel: string;
+      price: number;
+    }) => ({
+      name: item.brandModel,
+      quantity: '1',
+      note: item.productId,
+      basePriceMoney: {
+        amount: BigInt(Math.round(item.price * 100)),
+        currency: 'CAD',
       },
-      quantity: 1,
     }));
 
-    const origin = event.headers.origin ?? event.headers.referer ?? 'https://cameras.haliframesphotos.ca';
+    const origin = event.headers.origin
+      ?? event.headers.referer?.replace(/\/$/, '')
+      ?? 'https://cameras.haliframesphotos.ca';
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: lineItems,
-      mode: 'payment',
-      success_url: `${origin}/checkout?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/checkout?cancelled=true`,
-      metadata: { cartItems: JSON.stringify(items.map((i: { productId: string }) => i.productId)) },
+    // The Square SDK resolves HttpResponsePromise<CreatePaymentLinkResponse> directly —
+    // no .result wrapper needed.
+    const response = await client.checkout.paymentLinks.create({
+      idempotencyKey: randomUUID(),
+      order: {
+        locationId,
+        lineItems,
+      },
+      checkoutOptions: {
+        redirectUrl: `${origin}/checkout`,
+      },
     });
+
+    const url = response.paymentLink?.url;
+    if (!url) {
+      throw new Error('Square did not return a checkout URL.');
+    }
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ url: session.url }),
+      body: JSON.stringify({ url }),
     };
   } catch (err) {
     console.error('[create-checkout]', err);

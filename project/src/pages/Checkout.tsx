@@ -11,7 +11,9 @@ interface OrderConfirmation {
 
 export default function Checkout() {
   const [params] = useSearchParams();
-  const sessionId = params.get('session_id');
+  // Square appends ?orderId=... to the redirect URL after a successful payment.
+  // We also support the legacy ?cancelled=true path for cancelled payments.
+  const orderId = params.get('orderId') ?? params.get('order_id');
   const cancelled = params.get('cancelled') === 'true';
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'cancelled'>('loading');
@@ -23,15 +25,15 @@ export default function Checkout() {
       setStatus('cancelled');
       return;
     }
-    if (!sessionId) {
+    if (!orderId) {
       setStatus('error');
-      setErrorMessage('No session ID found in the URL.');
+      setErrorMessage('No order ID found in the URL.');
       return;
     }
 
     async function verify() {
       try {
-        const res = await fetch(`/.netlify/functions/verify-checkout?session_id=${sessionId}`);
+        const res = await fetch(`/.netlify/functions/verify-checkout?orderId=${orderId}`);
         if (!res.ok) {
           const data = await res.json();
           throw new Error(data.error || 'Could not verify order.');
@@ -46,7 +48,7 @@ export default function Checkout() {
     }
 
     verify();
-  }, [sessionId, cancelled]);
+  }, [orderId, cancelled]);
 
   return (
     <div className="min-h-screen bg-[--color-bg] flex items-center justify-center p-6">

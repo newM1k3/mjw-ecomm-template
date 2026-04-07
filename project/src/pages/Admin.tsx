@@ -111,9 +111,12 @@ function AdminPanel() {
   const [adminSearch, setAdminSearch] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const [stripeKey, setStripeKey] = useState('');
-  const [stripeMode, setStripeMode] = useState<'test' | 'live'>('test');
-  const [hasStripeKey, setHasStripeKey] = useState(false);
+  const [squareAccessToken, setSquareAccessToken] = useState('');
+  const [squareLocationId, setSquareLocationId] = useState('');
+  const [squareWebhookKey, setSquareWebhookKey] = useState('');
+  const [squareEnvironment, setSquareEnvironment] = useState<'sandbox' | 'production'>('sandbox');
+  const [hasSquareToken, setHasSquareToken] = useState(false);
+  const [hasSquareLocation, setHasSquareLocation] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
@@ -128,8 +131,9 @@ function AdminPanel() {
 
   useEffect(() => {
     if (activeTab === 'settings') {
-      getSetting('stripe_mode').then(v => { if (v) setStripeMode(v as 'test' | 'live'); });
-      getSetting('stripe_secret_key').then(v => { setHasStripeKey(!!v); });
+      getSetting('square_environment').then(v => { if (v) setSquareEnvironment(v as 'sandbox' | 'production'); });
+      getSetting('square_access_token').then(v => { setHasSquareToken(!!v); });
+      getSetting('square_location_id').then(v => { setHasSquareLocation(!!v); });
     }
   }, [activeTab, getSetting]);
 
@@ -162,11 +166,22 @@ function AdminPanel() {
     e.preventDefault();
     setSettingsSaving(true);
     try {
-      if (stripeKey) await setSetting('stripe_secret_key', stripeKey);
-      await setSetting('stripe_mode', stripeMode);
+      if (squareAccessToken) {
+        await setSetting('square_access_token', squareAccessToken);
+        setHasSquareToken(true);
+        setSquareAccessToken('');
+      }
+      if (squareLocationId) {
+        await setSetting('square_location_id', squareLocationId);
+        setHasSquareLocation(true);
+        setSquareLocationId('');
+      }
+      if (squareWebhookKey) {
+        await setSetting('square_webhook_signature_key', squareWebhookKey);
+        setSquareWebhookKey('');
+      }
+      await setSetting('square_environment', squareEnvironment);
       setSettingsSaved(true);
-      setStripeKey('');
-      setHasStripeKey(true);
       setTimeout(() => setSettingsSaved(false), 3000);
     } finally {
       setSettingsSaving(false);
@@ -411,42 +426,71 @@ function AdminPanel() {
           <div className="max-w-lg">
             <form onSubmit={handleSaveSettings} className="bg-white rounded-2xl border border-[--color-border] p-6 space-y-5">
               <div>
-                <h2 className="text-lg font-bold text-[--color-text] mb-1">Stripe Configuration</h2>
+                <h2 className="text-lg font-bold text-[--color-text] mb-1">Square Configuration</h2>
                 <p className="text-sm text-[--color-muted]">
-                  {hasStripeKey
-                    ? 'A Stripe secret key is currently saved. Enter a new key below to replace it.'
-                    : 'No Stripe key is configured yet. Checkout will not work until a key is saved.'}
+                  Connect your Square account to enable online checkout. You can find your credentials in the
+                  Square Developer Console.
                 </p>
               </div>
 
+              {/* Access Token */}
               <div>
                 <label className="block text-sm font-medium text-[--color-text] mb-1.5">
-                  Stripe Secret Key {hasStripeKey && <span className="text-green-600 text-xs font-normal ml-1">Saved</span>}
+                  Access Token {hasSquareToken && <span className="text-green-600 text-xs font-normal ml-1">Saved</span>}
                 </label>
                 <input
                   type="password"
-                  value={stripeKey}
-                  onChange={e => setStripeKey(e.target.value)}
-                  placeholder={hasStripeKey ? 'Enter new key to replace existing…' : 'sk_live_… or sk_test_…'}
+                  value={squareAccessToken}
+                  onChange={e => setSquareAccessToken(e.target.value)}
+                  placeholder={hasSquareToken ? 'Enter new token to replace existing…' : 'EAAAl… (Sandbox or Production)'}
                   className="w-full border border-[--color-border] rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent"
                 />
               </div>
 
+              {/* Location ID */}
               <div>
-                <label className="block text-sm font-medium text-[--color-text] mb-1.5">Mode</label>
+                <label className="block text-sm font-medium text-[--color-text] mb-1.5">
+                  Location ID {hasSquareLocation && <span className="text-green-600 text-xs font-normal ml-1">Saved</span>}
+                </label>
+                <input
+                  type="text"
+                  value={squareLocationId}
+                  onChange={e => setSquareLocationId(e.target.value)}
+                  placeholder={hasSquareLocation ? 'Enter new Location ID to replace existing…' : 'L… (from Square Dashboard → Locations)'}
+                  className="w-full border border-[--color-border] rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent"
+                />
+              </div>
+
+              {/* Webhook Signature Key */}
+              <div>
+                <label className="block text-sm font-medium text-[--color-text] mb-1.5">
+                  Webhook Signature Key
+                </label>
+                <input
+                  type="password"
+                  value={squareWebhookKey}
+                  onChange={e => setSquareWebhookKey(e.target.value)}
+                  placeholder="From Square Developer Console → Webhooks"
+                  className="w-full border border-[--color-border] rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent"
+                />
+              </div>
+
+              {/* Environment toggle */}
+              <div>
+                <label className="block text-sm font-medium text-[--color-text] mb-1.5">Environment</label>
                 <div className="flex gap-3">
-                  {(['test', 'live'] as const).map(mode => (
-                    <label key={mode} className="flex items-center gap-2 cursor-pointer">
+                  {(['sandbox', 'production'] as const).map(env => (
+                    <label key={env} className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="radio"
-                        name="stripeMode"
-                        value={mode}
-                        checked={stripeMode === mode}
-                        onChange={() => setStripeMode(mode)}
+                        name="squareEnvironment"
+                        value={env}
+                        checked={squareEnvironment === env}
+                        onChange={() => setSquareEnvironment(env)}
                         className="accent-[--color-primary]"
                       />
-                      <span className={`text-sm font-medium capitalize ${mode === 'live' ? 'text-green-700' : 'text-amber-700'}`}>
-                        {mode}
+                      <span className={`text-sm font-medium capitalize ${env === 'production' ? 'text-green-700' : 'text-amber-700'}`}>
+                        {env}
                       </span>
                     </label>
                   ))}
@@ -459,7 +503,7 @@ function AdminPanel() {
                 className="flex items-center gap-2 bg-[--color-primary] hover:bg-[--color-primary-dark] disabled:opacity-60 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
               >
                 {settingsSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {settingsSaving ? 'Saving…' : settingsSaved ? 'Saved' : 'Save Settings'}
+                {settingsSaving ? 'Saving…' : settingsSaved ? 'Saved ✓' : 'Save Settings'}
               </button>
             </form>
           </div>

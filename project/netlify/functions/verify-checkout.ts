@@ -1,5 +1,5 @@
 import { Handler } from '@netlify/functions';
-import Stripe from 'stripe';
+import { SquareClient, SquareEnvironment } from 'square';
 import PocketBase from 'pocketbase';
 
 async function authAdmin(): Promise<PocketBase> {
@@ -11,43 +11,79 @@ async function authAdmin(): Promise<PocketBase> {
   return pb;
 }
 
-async function getStripeKey(pb: PocketBase): Promise<string> {
-  const record = await pb.collection('settings').getFirstListItem('key = "stripe_secret_key"');
-  return record.value;
+async function getSquareSettings(pb: PocketBase): Promise<{
+  accessToken: string;
+  environment: 'sandbox' | 'production';
+}> {
+  const [tokenRecord, envRecord] = await Promise.all([
+    pb.collection('settings').getFirstListItem('key = "square_access_token"'),
+    pb.collection('settings').getFirstListItem('key = "square_environment"').catch(() => null),
+  ]);
+  return {
+    accessToken: tokenRecord.value,
+    environment: (envRecord?.value === 'production') ? 'production' : 'sandbox',
+  };
 }
 
 export const handler: Handler = async (event) => {
-  const sessionId = event.queryStringParameters?.session_id;
-  if (!sessionId) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Missing session_id' }) };
+  // Square appends ?orderId=... to the redirect URL after a successful payment.
+  const orderId = event.queryStringParameters?.orderId ?? event.queryStringParameters?.order_id;
+  if (!orderId) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Missing orderId' }) };
   }
 
   try {
     const pb = await authAdmin();
-    const secretKey = await getStripeKey(pb);
-    const stripe = new Stripe(secretKey);
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const { accessToken, environment } = await getSquareSettings(pb);
 
-    if (session.payment_status !== 'paid') {
-      return { statusCode: 200, body: JSON.stringify({ status: session.payment_status }) };
+    const client = new SquareClient({
+      token: accessToken,
+      environment: environment === 'production'
+        ? SquareEnvironment.Production
+        : SquareEnvironment.Sandbox,
+    });
+
+    // orders.get takes { orderId } and resolves to GetOrderResponse directly.
+    const orderResponse = await client.orders.get({ orderId });
+    const order = orderResponse.order;
+
+    if (!order) {
+      return { statusCode: 404, body: JSON.stringify({ error: 'Order not found' }) };
     }
 
+    // Square order state is OPEN once payment is complete via a payment link.
+    const isPaid = order.state === 'OPEN' || order.state === 'COMPLETED';
+    if (!isPaid) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ status: order.state ?? 'pending' }),
+      };
+    }
+
+    // Idempotency guard: skip if we already recorded this order.
     try {
-      await pb.collection('orders').getFirstListItem(`stripe_session_id = "${sessionId}"`);
+      await pb.collection('orders').getFirstListItem(`square_order_id = "${orderId}"`);
     } catch {
-      const productIds: string[] = JSON.parse(session.metadata?.cartItems ?? '[]');
+      // Not yet recorded — create the order record now.
+      const totalAmount = Number(order.totalMoney?.amount ?? 0) / 100;
 
       await pb.collection('orders').create({
-        stripe_session_id: sessionId,
-        customer_email: session.customer_details?.email ?? '',
-        customer_name: session.customer_details?.name ?? '',
-        total_amount: (session.amount_total ?? 0) / 100,
-        currency: 'cad',
+        square_order_id: orderId,
+        customer_email: '',
+        customer_name: '',
+        total_amount: totalAmount,
+        currency: order.totalMoney?.currency ?? 'CAD',
         status: 'paid',
         cart_session_id: '',
       });
 
-      for (const productId of productIds) {
+      // Mark each product as sold.
+      // The PocketBase product ID was embedded in the Square line item `note` field
+      // by create-checkout.ts.
+      const lineItems = order.lineItems ?? [];
+      for (const item of lineItems) {
+        const productId = item.note;
+        if (!productId) continue;
         try {
           await pb.collection('products').update(productId, {
             is_sold: true,
@@ -59,13 +95,27 @@ export const handler: Handler = async (event) => {
       }
     }
 
+    // Attempt to retrieve buyer email from the associated payment tender.
+    let customerEmail = '';
+    try {
+      const tenders = (order as Record<string, unknown>).tenders as Array<{ paymentId?: string }> | undefined;
+      if (tenders && tenders.length > 0 && tenders[0].paymentId) {
+        const paymentResponse = await client.payments.get({ paymentId: tenders[0].paymentId });
+        customerEmail = (paymentResponse.payment as Record<string, unknown>)?.buyerEmailAddress as string ?? '';
+      }
+    } catch {
+      // Buyer details are optional — proceed without them.
+    }
+
+    const totalAmount = Number(order.totalMoney?.amount ?? 0) / 100;
+
     return {
       statusCode: 200,
       body: JSON.stringify({
         status: 'paid',
-        customerName: session.customer_details?.name ?? '',
-        customerEmail: session.customer_details?.email ?? '',
-        totalAmount: (session.amount_total ?? 0) / 100,
+        customerName: '',
+        customerEmail,
+        totalAmount,
       }),
     };
   } catch (err) {
